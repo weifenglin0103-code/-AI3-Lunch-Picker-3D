@@ -92,8 +92,25 @@
     .booking-float:focus-visible { outline: 3px solid #3a2213; outline-offset: 4px; }
     .booking-float svg { width: 22px; height: 22px; }
     #toast-container { bottom: calc(88px + env(safe-area-inset-bottom)); }
+    /* 人來人往動畫 */
+    .crowd { position: absolute; left: 0; right: 0; bottom: 0; height: 120px; overflow: hidden; pointer-events: none; }
+    .crowd::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: rgba(0,0,0,.35); filter: blur(3px); }
+    .walker { position: absolute; bottom: 4px; left: 0; will-change: transform; animation: walk-x linear infinite; }
+    .walker.rtl { animation-name: walk-x-rtl; }
+    .walker svg { display: block; overflow: visible; animation: bob .6s ease-in-out infinite; }
+    .walker.rtl svg { transform: scaleX(-1); }
+    .walker .leg-a, .walker .leg-b { transform-box: fill-box; transform-origin: 50% 0; animation: swing .6s ease-in-out infinite alternate; }
+    .walker .leg-b { animation-direction: alternate-reverse; }
+    .walker .arm-a, .walker .arm-b { transform-box: fill-box; transform-origin: 50% 0; animation: swing .6s ease-in-out infinite alternate-reverse; }
+    .walker .arm-b { animation-direction: alternate; }
+    @keyframes walk-x { from { transform: translateX(-80px); } to { transform: translateX(calc(100vw + 80px)); } }
+    @keyframes walk-x-rtl { from { transform: translateX(calc(100vw + 80px)); } to { transform: translateX(-80px); } }
+    @keyframes swing { from { transform: rotate(-26deg); } to { transform: rotate(26deg); } }
+    @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    .walker.rtl svg { animation-name: bob; }
     @media (prefers-reduced-motion: reduce) {
       .booking-float { transition: none; }
+      .crowd { display: none; }
     }
   </style>
 </head>
@@ -164,6 +181,42 @@
            alt="剛起鍋的金黃煎鍋貼" data-fallback="鍋貼"
            class="absolute inset-0 h-full w-full object-cover">
       <div class="absolute inset-0 bg-gradient-to-r from-wood-900/90 via-wood-900/65 to-wood-900/25"></div>
+
+      <!-- 人來人往動畫 -->
+      <div id="crowd" class="crowd" aria-hidden="true"></div>
+      <script>
+        (function () {
+          var box = document.getElementById('crowd');
+          if (!box) return;
+          var colors = ['#1f130b', '#2b1a0f', '#3a2213', '#4a2c18', '#241710'];
+          var accents = ['#e8702a', '#f4a261', '#c9a27a', '#8d5a34', '#d9b38c', '#b98d6a'];
+          var count = window.innerWidth < 640 ? 9 : 16;
+          for (var i = 0; i < count; i++) {
+            var rtl = i % 2 === 1;
+            var scale = 0.7 + Math.random() * 0.6;              // 遠近大小
+            var dur = 14 + Math.random() * 16 + (1.3 - scale) * 10; // 走越遠越慢
+            var delay = -Math.random() * dur;                      // 負延遲：一開始就散落在畫面上
+            var body = colors[Math.floor(Math.random() * colors.length)];
+            var acc = accents[Math.floor(Math.random() * accents.length)];
+            var w = document.createElement('div');
+            w.className = 'walker' + (rtl ? ' rtl' : '');
+            w.style.animationDuration = dur + 's';
+            w.style.animationDelay = delay + 's';
+            w.style.opacity = (0.55 + scale * 0.35).toFixed(2);
+            w.style.bottom = (4 + (1.3 - scale) * 14) + 'px';
+            w.innerHTML =
+              '<svg width="' + (28 * scale) + '" height="' + (84 * scale) + '" viewBox="0 0 28 84">' +
+              '<rect class="arm-a" x="3" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>' +
+              '<rect class="leg-a" x="8" y="48" width="6" height="34" rx="3" fill="' + body + '"/>' +
+              '<rect class="leg-b" x="14" y="48" width="6" height="34" rx="3" fill="' + body + '"/>' +
+              '<rect x="6" y="22" width="16" height="32" rx="7" fill="' + acc + '"/>' +
+              '<rect class="arm-b" x="20" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>' +
+              '<circle cx="14" cy="12" r="8" fill="' + body + '"/>' +
+              '</svg>';
+            box.appendChild(w);
+          }
+        })();
+      </script>
 
       <div class="relative mx-auto w-full max-w-7xl px-4 pb-16 pt-28 md:px-8">
         <div class="max-w-2xl text-white">
