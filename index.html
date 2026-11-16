@@ -92,7 +92,10 @@
     .booking-float:focus-visible { outline: 3px solid #3a2213; outline-offset: 4px; }
     .booking-float svg { width: 22px; height: 22px; }
     #toast-container { bottom: calc(88px + env(safe-area-inset-bottom)); }
-    /* 人來人往動畫 */
+    /* 3D 人來人往 */
+    .crowd3d { position: absolute; left: 0; right: 0; bottom: 0; height: clamp(230px, 42vh, 420px); pointer-events: none; }
+    .crowd3d canvas { display: block; width: 100%; height: 100%; }
+    /* 人來人往動畫（2D 備援） */
     .crowd { position: absolute; left: 0; right: 0; bottom: 0; height: 120px; overflow: hidden; pointer-events: none; }
     .crowd::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: rgba(0,0,0,.35); filter: blur(3px); }
     .walker { position: absolute; bottom: 4px; left: 0; will-change: transform; animation: walk-x linear infinite; }
@@ -185,47 +188,358 @@
            class="absolute inset-0 h-full w-full object-cover">
       <div class="absolute inset-0 bg-gradient-to-r from-wood-900/90 via-wood-900/65 to-wood-900/25"></div>
 
-      <!-- 人來人往動畫 -->
+      <!-- 人來人往 3D 動畫（Three.js）：街景 + 店家，行人路過、進店、出店。無法使用 WebGL 時自動退回 2D 版本 -->
+      <div id="crowd3d" class="crowd3d" aria-hidden="true"></div>
       <div id="crowd" class="crowd" aria-hidden="true"></div>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
       <script>
         (function () {
-          var box = document.getElementById('crowd');
-          if (!box) return;
-          var colors = ['#1f130b', '#2b1a0f', '#3a2213', '#4a2c18', '#241710'];
-          var accents = ['#e8702a', '#f4a261', '#c9a27a', '#8d5a34', '#d9b38c', '#b98d6a'];
-          var count = window.innerWidth < 640 ? 9 : 16;
-          for (var i = 0; i < count; i++) {
-            var rtl = i % 2 === 1;
-            var scale = 0.7 + Math.random() * 0.6;              // 遠近大小
-            var dur = 14 + Math.random() * 16 + (1.3 - scale) * 10; // 走越遠越慢
-            var delay = -Math.random() * dur;                      // 負延遲：一開始就散落在畫面上
-            var body = colors[Math.floor(Math.random() * colors.length)];
-            var acc = accents[Math.floor(Math.random() * accents.length)];
-            var carry = Math.random() < 0.6; // 約六成的人手提鍋貼外帶盒
-            var w = document.createElement('div');
-            w.className = 'walker' + (rtl ? ' rtl' : '');
-            w.style.animationDuration = dur + 's';
-            w.style.animationDelay = delay + 's';
-            w.style.opacity = (0.55 + scale * 0.35).toFixed(2);
-            w.style.bottom = (4 + (1.3 - scale) * 14) + 'px';
-            w.innerHTML =
-              '<svg width="' + (28 * scale) + '" height="' + (84 * scale) + '" viewBox="0 0 28 84">' +
-              '<rect class="arm-a" x="3" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>' +
-              '<rect class="leg-a" x="8" y="48" width="6" height="34" rx="3" fill="' + body + '"/>' +
-              '<rect class="leg-b" x="14" y="48" width="6" height="34" rx="3" fill="' + body + '"/>' +
-              '<rect x="6" y="22" width="16" height="32" rx="7" fill="' + acc + '"/>' +
-              (carry
-                ? '<g class="arm-carry">' +
-                  '<rect x="20" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>' +
-                  '<path d="M19.5 55 Q22.5 46 25.5 55" fill="none" stroke="' + body + '" stroke-width="1.6"/>' +
-                  '<rect x="16" y="54" width="13" height="11" rx="1.5" fill="#fffdf9"/>' +
-                  '<rect x="16" y="57" width="13" height="3" fill="#e8702a"/>' +
-                  '</g>'
-                : '<rect class="arm-b" x="20" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>') +
-              '<circle cx="14" cy="12" r="8" fill="' + body + '"/>' +
-              '</svg>';
-            box.appendChild(w);
+          var host = document.getElementById('crowd3d');
+          var fallback = document.getElementById('crowd');
+          var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+          /* ---------- 2D 備援（沒有 WebGL / Three.js 載入失敗時） ---------- */
+          function init2D() {
+            host.remove();
+            var colors = ['#1f130b', '#2b1a0f', '#3a2213', '#4a2c18', '#241710'];
+            var accents = ['#e8702a', '#f4a261', '#c9a27a', '#8d5a34', '#d9b38c', '#b98d6a'];
+            var count = window.innerWidth < 640 ? 9 : 16;
+            for (var i = 0; i < count; i++) {
+              var rtl = i % 2 === 1;
+              var scale = 0.7 + Math.random() * 0.6;
+              var dur = 14 + Math.random() * 16 + (1.3 - scale) * 10;
+              var body = colors[Math.floor(Math.random() * colors.length)];
+              var acc = accents[Math.floor(Math.random() * accents.length)];
+              var carry = Math.random() < 0.6;
+              var w = document.createElement('div');
+              w.className = 'walker' + (rtl ? ' rtl' : '');
+              w.style.animationDuration = dur + 's';
+              w.style.animationDelay = (-Math.random() * dur) + 's';
+              w.style.opacity = (0.55 + scale * 0.35).toFixed(2);
+              w.style.bottom = (4 + (1.3 - scale) * 14) + 'px';
+              w.innerHTML =
+                '<svg width="' + (28 * scale) + '" height="' + (84 * scale) + '" viewBox="0 0 28 84">' +
+                '<rect class="arm-a" x="3" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>' +
+                '<rect class="leg-a" x="8" y="48" width="6" height="34" rx="3" fill="' + body + '"/>' +
+                '<rect class="leg-b" x="14" y="48" width="6" height="34" rx="3" fill="' + body + '"/>' +
+                '<rect x="6" y="22" width="16" height="32" rx="7" fill="' + acc + '"/>' +
+                (carry
+                  ? '<g class="arm-carry">' +
+                    '<rect x="20" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>' +
+                    '<path d="M19.5 55 Q22.5 46 25.5 55" fill="none" stroke="' + body + '" stroke-width="1.6"/>' +
+                    '<rect x="16" y="54" width="13" height="11" rx="1.5" fill="#fffdf9"/>' +
+                    '<rect x="16" y="57" width="13" height="3" fill="#e8702a"/>' +
+                    '</g>'
+                  : '<rect class="arm-b" x="20" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>') +
+                '<circle cx="14" cy="12" r="8" fill="' + body + '"/>' +
+                '</svg>';
+              fallback.appendChild(w);
+            }
           }
+
+          /* ---------- 3D 場景 ---------- */
+          function init3D() {
+            var THREE = window.THREE;
+            if (!THREE) return false;
+            var renderer;
+            try {
+              renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+            } catch (e) { return false; }
+
+            var W = host.clientWidth || 1280, H = host.clientHeight || 300;
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            renderer.setSize(W, H, false);
+            renderer.setClearColor(0x000000, 0);
+            host.appendChild(renderer.domElement);
+
+            var scene = new THREE.Scene();
+            var camera = new THREE.PerspectiveCamera(30, W / H, 0.1, 100);
+            var VIEW_H = 6.2;                                                   // 畫面可視高度（公尺）
+            var camDist = (VIEW_H / 2) / Math.tan(15 * Math.PI / 180);
+            camera.position.set(0, 2.6, camDist);
+            camera.lookAt(0, 1.7, 0);
+
+            /* 燈光 */
+            scene.add(new THREE.AmbientLight(0xfff1dd, 0.7));
+            var sun = new THREE.DirectionalLight(0xfff0d8, 0.5);
+            sun.position.set(-4, 8, 10);
+            scene.add(sun);
+            var doorLight = new THREE.PointLight(0xffb866, 1.3, 9);
+            scene.add(doorLight);
+
+            /* 地面：人行道 + 路緣 + 馬路（半透明，讓海報背景透出來） */
+            function ground(w, d, x, y, z, color, opacity) {
+              var m = new THREE.Mesh(new THREE.PlaneGeometry(w, d),
+                new THREE.MeshLambertMaterial({ color: color, transparent: true, opacity: opacity }));
+              m.rotation.x = -Math.PI / 2;
+              m.position.set(x, y, z);
+              scene.add(m);
+            }
+            ground(160, 6.2, 0, 0, 1.6, 0xb89a7a, 0.92);                      // 人行道
+            ground(160, 14, 0, -0.02, 11.7, 0x2a1a10, 0.78);                  // 馬路
+            var curb = new THREE.Mesh(new THREE.BoxGeometry(160, 0.14, 0.22),
+              new THREE.MeshLambertMaterial({ color: 0x8a6a4e }));
+            curb.position.set(0, 0.07, 4.8);
+            scene.add(curb);
+
+            /* 店家 */
+            var store = new THREE.Group();
+            scene.add(store);
+            function box(w, h, d, color, x, y, z, parent) {
+              var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: color }));
+              m.position.set(x, y, z);
+              (parent || store).add(m);
+              return m;
+            }
+            function glow(w, h, color, x, y, z) {
+              var m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: color }));
+              m.position.set(x, y, z);
+              store.add(m);
+            }
+            box(6, 3.8, 3, 0xf3e3c8, 0, 1.9, 0);                              // 主體（正面在 z=+1.5 → 世界 z=0）
+            box(6.3, 0.22, 3.3, 0x7a4e2d, 0, 3.91, 0);                        // 屋頂女兒牆
+            box(1.55, 2.4, 0.1, 0x3a2213, 0, 1.2, 1.5);                       // 門框
+            glow(1.3, 2.2, 0xffd28a, 0, 1.1, 1.56);                           // 門（透出暖光）
+            [-1.95, 1.95].forEach(function (x) {                              // 兩側櫥窗
+              box(1.5, 1.4, 0.1, 0x3a2213, x, 1.45, 1.5);
+              glow(1.3, 1.2, 0xffe0a8, x, 1.45, 1.56);
+            });
+            box(6.1, 0.35, 0.18, 0x7a4e2d, 0, 0.18, 1.55);                    // 底座
+
+            // 條紋雨遮
+            var awning = new THREE.Group();
+            awning.position.set(0, 2.78, 2.05);
+            awning.rotation.x = 0.32;
+            for (var i = 0; i < 8; i++) {
+              box(0.8, 0.07, 1.2, i % 2 ? 0xf6dfb8 : 0xe8702a, -2.8 + i * 0.8, 0, 0, awning);
+            }
+            store.add(awning);
+
+            // 招牌（文字貼圖）
+            var cv = document.createElement('canvas');
+            cv.width = 512; cv.height = 110;
+            var cx = cv.getContext('2d');
+            cx.fillStyle = '#3a2213'; cx.fillRect(0, 0, 512, 110);
+            cx.strokeStyle = '#f4a261'; cx.lineWidth = 4; cx.strokeRect(6, 6, 500, 98);
+            cx.fillStyle = '#f4a261';
+            cx.font = '900 62px "Noto Serif TC", "PMingLiU", serif';
+            cx.textAlign = 'center'; cx.textBaseline = 'middle';
+            cx.fillText('煎記鍋貼', 256, 58);
+            var sign = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.77),
+              new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
+            sign.position.set(0, 3.45, 1.52);
+            store.add(sign);
+
+            // 紅燈籠
+            [-2.55, 2.55].forEach(function (x) {
+              var l = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), new THREE.MeshBasicMaterial({ color: 0xe8502a }));
+              l.scale.y = 1.15;
+              l.position.set(x, 2.35, 1.75);
+              store.add(l);
+            });
+
+            /* 行人 */
+            var tops = [0xe8702a, 0xf4a261, 0xc9a27a, 0x8d5a34, 0x4f7a6a, 0x3f5d8a, 0xb5483a, 0xd9b38c, 0x6b4a8a];
+            var pantsC = [0x2b1a0f, 0x3a2213, 0x28303c, 0x4a4036, 0x1f2a44];
+            var hairC = [0x1c120b, 0x2b1a0f, 0x4a3020, 0x8a8a8a, 0x0e0e0e];
+            var skinC = [0xf1c9a1, 0xe3b088, 0xc98f63, 0xf6d8b8];
+            function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+
+            var shadowGeo = new THREE.CircleGeometry(0.38, 16);
+            var cylGeo = {
+              body: new THREE.CylinderGeometry(0.2, 0.25, 0.68, 12),
+              leg: new THREE.CylinderGeometry(0.08, 0.07, 0.8, 8),
+              arm: new THREE.CylinderGeometry(0.06, 0.055, 0.6, 8),
+              head: new THREE.SphereGeometry(0.17, 14, 12),
+              hair: new THREE.SphereGeometry(0.18, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+              hand: new THREE.SphereGeometry(0.06, 8, 6),
+              bag: new THREE.BoxGeometry(0.28, 0.2, 0.2),
+              band: new THREE.BoxGeometry(0.29, 0.06, 0.21),
+              handle: new THREE.TorusGeometry(0.08, 0.012, 6, 12, Math.PI)
+            };
+
+            function makePerson() {
+              var m = {
+                skin: new THREE.MeshLambertMaterial({ transparent: true }),
+                top: new THREE.MeshLambertMaterial({ transparent: true }),
+                pants: new THREE.MeshLambertMaterial({ transparent: true }),
+                hair: new THREE.MeshLambertMaterial({ transparent: true }),
+                bag: new THREE.MeshLambertMaterial({ color: 0xfffdf9, transparent: true }),
+                band: new THREE.MeshLambertMaterial({ color: 0xe8702a, transparent: true }),
+                shadow: new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true })
+              };
+              var g = new THREE.Group();
+              function part(geo, mat, x, y, z, parent) {
+                var o = new THREE.Mesh(geo, mat);
+                o.position.set(x, y, z);
+                (parent || g).add(o);
+                return o;
+              }
+              function pivot(x, y, parent) {
+                var o = new THREE.Group();
+                o.position.set(x, y, 0);
+                (parent || g).add(o);
+                return o;
+              }
+              part(cylGeo.body, m.top, 0, 1.12, 0);
+              part(cylGeo.head, m.skin, 0, 1.62, 0);
+              var hair = part(cylGeo.hair, m.hair, 0, 1.63, -0.005);
+              hair.rotation.x = -0.25;
+              var legL = pivot(-0.1, 0.8), legR = pivot(0.1, 0.8);
+              part(cylGeo.leg, m.pants, 0, -0.4, 0, legL);
+              part(cylGeo.leg, m.pants, 0, -0.4, 0, legR);
+              var armL = pivot(-0.29, 1.42), armR = pivot(0.29, 1.42);
+              part(cylGeo.arm, m.top, 0, -0.3, 0, armL);
+              part(cylGeo.hand, m.skin, 0, -0.62, 0, armL);
+              part(cylGeo.arm, m.top, 0, -0.3, 0, armR);
+              part(cylGeo.hand, m.skin, 0, -0.62, 0, armR);
+              // 手提鍋貼外帶盒
+              var bag = pivot(0, -0.72, armR);
+              part(cylGeo.bag, m.bag, 0, -0.08, 0, bag);
+              part(cylGeo.band, m.band, 0, -0.08, 0, bag);
+              part(cylGeo.handle, m.band, 0, 0.02, 0, bag);
+              var sh = new THREE.Mesh(shadowGeo, m.shadow);
+              sh.rotation.x = -Math.PI / 2;
+              sh.position.y = 0.012;
+              g.add(sh);
+              scene.add(g);
+              return { g: g, m: m, legL: legL, legR: legR, armL: armL, armR: armR, bag: bag, wait: 0, phase: Math.random() * 6, op: 1, lastOp: -1 };
+            }
+
+            var VW = 20, sx = 5, half = 12;
+            function layout() {
+              W = host.clientWidth || W; H = host.clientHeight || H;
+              renderer.setSize(W, H, false);
+              camera.aspect = W / H;
+              camera.updateProjectionMatrix();
+              VW = VIEW_H * camera.aspect;
+              half = VW / 2 + 1.5;
+              sx = Math.min(VW * 0.24, 8);                                      // 店家放右側，讓左邊文字不被擋
+              store.position.set(sx, 0, -1.5);
+              doorLight.position.set(sx, 1.7, 1.4);
+            }
+
+            function spawn(p, initial) {
+              var m = p.m;
+              m.skin.color.setHex(pick(skinC));
+              m.top.color.setHex(pick(tops));
+              m.pants.color.setHex(pick(pantsC));
+              m.hair.color.setHex(pick(hairC));
+              p.bag.visible = Math.random() < 0.6;
+              p.speed = 1.0 + Math.random() * 0.7;
+              p.lane = 1.3 + Math.random() * 2.2;
+              p.g.scale.setScalar(0.93 + Math.random() * 0.14);
+              p.dir = Math.random() < 0.5 ? 1 : -1;
+              p.stage = '';
+              p.op = 1;
+              var r = Math.random();
+              if (r < 0.45) {                                                   // 路過
+                p.mode = 'pass';
+                p.x = initial ? (Math.random() * 2 - 1) * half : -p.dir * half;
+                p.z = p.lane;
+                p.wait = initial ? 0 : Math.random() * 2;
+              } else if (r < 0.8) {                                             // 走進店裡
+                p.mode = 'enter'; p.stage = 'approach';
+                var span = initial ? 1 + Math.random() * (half - 1) : half;
+                p.x = Math.max(-half, Math.min(half, sx - p.dir * span));
+                p.z = p.lane;
+                p.wait = initial ? 0 : Math.random() * 2;
+              } else {                                                          // 從店裡走出來
+                p.mode = 'exit';
+                p.x = sx + (Math.random() - 0.5) * 0.5;
+                p.z = 0.05;
+                p.op = 0;
+                p.wait = initial ? Math.random() * 6 : 0.5 + Math.random() * 3;
+              }
+              p.ry = p.mode === 'exit' ? 0 : p.dir * Math.PI / 2;
+              p.g.visible = p.wait <= 0;
+            }
+
+            function setOpacity(p, o) {
+              if (o === p.lastOp) return;
+              p.lastOp = o;
+              var m = p.m;
+              for (var k in m) { m[k].opacity = k === 'shadow' ? 0.28 * o : o; }
+            }
+
+            function step(p, dt) {
+              if (p.wait > 0) { p.wait -= dt; p.g.visible = p.wait <= 0; if (p.wait > 0) return; }
+              var move = p.speed * dt, targetRy = p.ry;
+              if (p.mode === 'pass') {
+                p.x += p.dir * move;
+                targetRy = p.dir * Math.PI / 2;
+                if (Math.abs(p.x) > half + 0.5 && p.x * p.dir > 0) { spawn(p, false); return; }
+              } else if (p.mode === 'enter') {
+                if (p.stage === 'approach') {
+                  p.x += p.dir * move;
+                  targetRy = p.dir * Math.PI / 2;
+                  if ((sx - p.x) * p.dir <= 0) { p.x = sx; p.stage = 'in'; }
+                } else {
+                  targetRy = Math.PI;                                           // 轉身面向店門
+                  p.z -= move * 0.85;
+                  p.op = Math.max(0, Math.min(1, (p.z - 0.1) / 0.8));
+                  if (p.z <= 0.1) { spawn(p, false); return; }
+                }
+              } else {                                                          // exit
+                targetRy = 0;
+                p.z += move * 0.75;
+                p.op = Math.max(0, Math.min(1, p.z / 0.9));
+                if (p.z >= p.lane) { p.mode = 'pass'; p.op = 1; p.z = p.lane; }
+              }
+              var diff = Math.atan2(Math.sin(targetRy - p.ry), Math.cos(targetRy - p.ry));
+              p.ry += diff * Math.min(1, dt * 7);
+              p.phase += dt * p.speed * 5.4;
+              var s = Math.sin(p.phase);
+              p.legL.rotation.x = s * 0.7;
+              p.legR.rotation.x = -s * 0.7;
+              p.armL.rotation.x = -s * 0.6;
+              p.armR.rotation.x = p.bag.visible ? s * 0.15 : s * 0.6;
+              p.g.position.set(p.x, Math.abs(Math.cos(p.phase)) * 0.035, p.z);
+              p.g.rotation.y = p.ry;
+              setOpacity(p, p.op);
+            }
+
+            layout();
+            var people = [], count = window.innerWidth < 640 ? 7 : 12;
+            for (var n = 0; n < count; n++) { var p = makePerson(); spawn(p, true); people.push(p); }
+
+            function tick(dt) { for (var q = 0; q < people.length; q++) step(people[q], dt); }
+
+            var running = false, last = 0;
+            function frame(now) {
+              if (!running) return;
+              var dt = Math.min(0.05, (now - last) / 1000);
+              last = now;
+              tick(dt);
+              renderer.render(scene, camera);
+              requestAnimationFrame(frame);
+            }
+            function start() { if (!running) { running = true; last = performance.now(); requestAnimationFrame(frame); } }
+            function stop() { running = false; }
+
+            if (reduceMotion) {                                                 // 減少動態：只畫一張靜態畫面
+              for (var w = 0; w < 120; w++) tick(0.05);
+              renderer.render(scene, camera);
+              window.addEventListener('resize', function () { layout(); renderer.render(scene, camera); });
+            } else {
+              var visible = true;
+              if ('IntersectionObserver' in window) {                           // 離開畫面就暫停，省電
+                new IntersectionObserver(function (es) {
+                  visible = es[0].isIntersecting;
+                  (visible && !document.hidden) ? start() : stop();
+                }).observe(host);
+              }
+              document.addEventListener('visibilitychange', function () { (document.hidden || !visible) ? stop() : start(); });
+              window.addEventListener('resize', layout);
+              start();
+            }
+            fallback.remove();
+            return true;
+          }
+
+          var ok = false;
+          try { ok = init3D(); } catch (e) { ok = false; if (host.firstChild) host.innerHTML = ''; }
+          if (!ok) init2D();
         })();
       </script>
 
