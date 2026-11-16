@@ -103,6 +103,9 @@
     .walker .leg-b { animation-direction: alternate-reverse; }
     .walker .arm-a, .walker .arm-b { transform-box: fill-box; transform-origin: 50% 0; animation: swing .6s ease-in-out infinite alternate-reverse; }
     .walker .arm-b { animation-direction: alternate; }
+    /* 手提外帶盒的手臂：以肩膀為軸心，盒子跟著一起擺動 */
+    .walker .arm-carry { transform-box: view-box; transform-origin: 22.5px 25px; animation: swing-carry .6s ease-in-out infinite alternate; }
+    @keyframes swing-carry { from { transform: rotate(-12deg); } to { transform: rotate(12deg); } }
     @keyframes walk-x { from { transform: translateX(-80px); } to { transform: translateX(calc(100vw + 80px)); } }
     @keyframes walk-x-rtl { from { transform: translateX(calc(100vw + 80px)); } to { transform: translateX(-80px); } }
     @keyframes swing { from { transform: rotate(-26deg); } to { transform: rotate(26deg); } }
@@ -198,6 +201,7 @@
             var delay = -Math.random() * dur;                      // 負延遲：一開始就散落在畫面上
             var body = colors[Math.floor(Math.random() * colors.length)];
             var acc = accents[Math.floor(Math.random() * accents.length)];
+            var carry = Math.random() < 0.6; // 約六成的人手提鍋貼外帶盒
             var w = document.createElement('div');
             w.className = 'walker' + (rtl ? ' rtl' : '');
             w.style.animationDuration = dur + 's';
@@ -210,7 +214,14 @@
               '<rect class="leg-a" x="8" y="48" width="6" height="34" rx="3" fill="' + body + '"/>' +
               '<rect class="leg-b" x="14" y="48" width="6" height="34" rx="3" fill="' + body + '"/>' +
               '<rect x="6" y="22" width="16" height="32" rx="7" fill="' + acc + '"/>' +
-              '<rect class="arm-b" x="20" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>' +
+              (carry
+                ? '<g class="arm-carry">' +
+                  '<rect x="20" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>' +
+                  '<path d="M19.5 55 Q22.5 46 25.5 55" fill="none" stroke="' + body + '" stroke-width="1.6"/>' +
+                  '<rect x="16" y="54" width="13" height="11" rx="1.5" fill="#fffdf9"/>' +
+                  '<rect x="16" y="57" width="13" height="3" fill="#e8702a"/>' +
+                  '</g>'
+                : '<rect class="arm-b" x="20" y="25" width="5" height="26" rx="2.5" fill="' + body + '"/>') +
               '<circle cx="14" cy="12" r="8" fill="' + body + '"/>' +
               '</svg>';
             box.appendChild(w);
