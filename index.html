@@ -884,6 +884,7 @@
     <div class="max-h-[95vh] w-full overflow-y-auto rounded-t-3xl bg-cream-50 sm:max-w-2xl sm:rounded-3xl">
       <!-- 步驟一：訂單確認表單 -->
       <form id="checkout-form" novalidate>
+        <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" class="absolute -left-[9999px] h-0 w-0 opacity-0">
         <div class="sticky top-0 z-10 flex items-center justify-between border-b border-wood-100 bg-cream-50 px-6 py-5">
           <h2 id="checkout-title" class="font-serif text-xl font-black">訂單確認</h2>
           <button type="button" class="modal-close grid h-10 w-10 place-items-center rounded-full hover:bg-cream-200" aria-label="關閉"><i data-lucide="x" class="h-5 w-5"></i></button>
@@ -966,7 +967,7 @@
           </div>
         </div>
         <div class="sticky bottom-0 border-t border-wood-100 bg-cream-50 px-6 py-4">
-          <button type="submit" class="flex w-full items-center justify-center gap-2 rounded-full bg-ember-500 py-4 font-bold text-white hover:bg-ember-600">
+          <button id="checkout-submit" type="submit" class="flex w-full items-center justify-center gap-2 rounded-full bg-ember-500 py-4 font-bold text-white hover:bg-ember-600 disabled:cursor-wait disabled:opacity-60">
             <i data-lucide="check-circle" class="h-5 w-5"></i>確認送出訂單
           </button>
         </div>
@@ -979,6 +980,7 @@
         </div>
         <h2 class="mt-6 font-serif text-3xl font-black">訂單已建立！</h2>
         <p class="mt-3 text-wood-700/80">感謝您的訂購，我們已開始為您現包現煎。</p>
+        <p id="success-note" class="mx-auto mt-3 hidden max-w-sm rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-800"></p>
         <div class="mx-auto mt-6 max-w-sm rounded-2xl bg-cream-200/60 p-5 text-left text-sm">
           <div class="flex justify-between py-1"><span class="text-wood-700/60">訂單編號</span><span id="success-id" class="font-bold"></span></div>
           <div class="flex justify-between py-1"><span class="text-wood-700/60">取餐方式</span><span id="success-type" class="font-bold"></span></div>
@@ -1073,6 +1075,9 @@
     const SHIPPING_FEE = 160;
     const FREE_SHIPPING = 1500;
     const CART_KEY = 'jian-cart-v1';
+    // Google Apps Script 網頁應用程式網址（部署後貼上 /exec 結尾的網址）。留空＝只在本機完成流程，不送出訂單。
+    const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbx6-szj_Ra_dKLWN5TDC35A7rjSaJSLNOyeNZIheqlXi3Dh_2t7GcYiIDFDncidf9PD/exec';
+    const PENDING_KEY = 'jian-pending-orders-v1';
 
     /* =========================================================
        工具函式
@@ -1488,7 +1493,7 @@
     }
     function clearErrors() { $$('input, textarea', checkoutForm).forEach(i => setError(i, false)); }
 
-    checkoutForm.addEventListener('submit', e => {
+    checkoutForm.addEventListener('submit', async e => {
       e.preventDefault();
       const type = currentOrderType();
       const f = checkoutForm.elements;
@@ -1517,6 +1522,17 @@
       const d = new Date();
       const orderId = 'JN' + d.getFullYear().toString().slice(2) + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '-' + Math.floor(1000 + Math.random() * 9000);
 
+      const payload = {
+        orderId, type,
+        store: type === 'delivery' ? '' : f.store.value,
+        time: type === 'delivery' ? '' : f.time.value,
+        name, phone, email, address,
+        note: f.note.value.trim(),
+        website: f.website.value,                       // 蜜罐
+        clientTotal: total,
+        items: Object.entries(cart).map(([id, qty]) => ({ id, qty }))
+      };
+
       let info;
       if (type === 'delivery') info = esc(address);
       else {
@@ -1525,10 +1541,41 @@
         info = `${esc(store.name)}・${esc(time)}`;
       }
 
-      $('#success-id').textContent = orderId;
+      // 送出訂單到 Google Sheet（未設定網址時略過）
+      let finalId = orderId, finalTotal = total, note = '';
+      if (GAS_ENDPOINT) {
+        const btn = $('#checkout-submit');
+        const btnHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.textContent = '訂單送出中…';
+        try {
+          const res = await sendOrder(payload);
+          if (res && res.ok) {
+            finalId = res.orderId || orderId;
+            finalTotal = typeof res.total === 'number' && res.total > 0 ? res.total : total;
+          } else {
+            // 伺服器明確拒絕（品項下架、資料不合法等）→ 留在表單讓顧客修正
+            toast((res && res.message) || '訂單送出失敗，請稍後再試', 'error');
+            return;
+          }
+        } catch (err) {
+          // 網路中斷或逾時 → 先暫存在本機，連線後自動重送（訂單編號相同，伺服器會去重）
+          queuePending(payload);
+          note = '目前網路不穩，訂單已先暫存在您的裝置，連線恢復後會自動送出。';
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = btnHtml;
+          refreshIcons();
+        }
+      }
+
+      $('#success-id').textContent = finalId;
       $('#success-type').textContent = ORDER_TYPE_LABEL[type];
       $('#success-info').innerHTML = info;
-      $('#success-total').textContent = money(total);
+      $('#success-total').textContent = money(finalTotal);
+      const noteEl = $('#success-note');
+      noteEl.textContent = note;
+      noteEl.classList.toggle('hidden', !note);
 
       checkoutForm.classList.add('hidden');
       $('#checkout-success').classList.remove('hidden');
@@ -1541,6 +1588,57 @@
       checkoutForm.reset();
       refreshIcons();
     });
+
+    /* =========================================================
+       訂單送出（Google Apps Script）與離線暫存重送
+       ========================================================= */
+    // 使用 text/plain 送出 JSON，屬於 CORS「簡單請求」，不會觸發預檢（GAS 不支援 OPTIONS）
+    async function sendOrder(payload) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 20000);
+      try {
+        const res = await fetch(GAS_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload),
+          signal: ctl.signal
+        });
+        return await res.json();
+      } finally { clearTimeout(timer); }
+    }
+
+    function loadPending() {
+      try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) { return []; }
+    }
+    function savePending(list) {
+      try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch (e) { /* 忽略 */ }
+    }
+    function queuePending(payload) {
+      const list = loadPending();
+      if (!list.some(p => p.orderId === payload.orderId)) list.push(payload);
+      savePending(list);
+    }
+    let flushing = false;
+    async function flushPending() {
+      if (!GAS_ENDPOINT || flushing || !navigator.onLine) return;
+      let list = loadPending();
+      if (!list.length) return;
+      flushing = true;
+      let sent = 0;
+      for (const p of list.slice()) {
+        try {
+          const res = await sendOrder(p);
+          // 成功，或伺服器明確拒絕（重送也不會成功）→ 都從暫存移除
+          list = list.filter(x => x.orderId !== p.orderId);
+          savePending(list);
+          if (res && res.ok) sent++;
+        } catch (err) { break; }   // 仍然離線，下次再試
+      }
+      flushing = false;
+      if (sent) toast(`已補送 ${sent} 筆暫存訂單`);
+    }
+    window.addEventListener('online', flushPending);
+    window.addEventListener('load', () => setTimeout(flushPending, 1500));
 
     /* =========================================================
        導覽列：捲動樣式、手機選單、目前區塊高亮
