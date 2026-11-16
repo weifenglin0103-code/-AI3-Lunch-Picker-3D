@@ -254,10 +254,10 @@
 
             var scene = new THREE.Scene();
             var camera = new THREE.PerspectiveCamera(30, W / H, 0.1, 100);
-            var VIEW_H = 6.2;                                                   // 畫面可視高度（公尺）
+            var VIEW_H = 6.8;                                                   // 畫面可視高度（公尺）
             var camDist = (VIEW_H / 2) / Math.tan(15 * Math.PI / 180);
-            camera.position.set(0, 2.6, camDist);
-            camera.lookAt(0, 1.7, 0);
+            camera.position.set(0, 2.8, camDist);
+            camera.lookAt(0, 2.2, 0);
 
             /* 燈光 */
             scene.add(new THREE.AmbientLight(0xfff1dd, 0.7));
@@ -337,6 +337,28 @@
               l.position.set(x, 2.35, 1.75);
               store.add(l);
             });
+
+            // 煙囪與蒸氣（現煎鍋貼的熱氣）
+            box(0.55, 0.45, 0.55, 0x7a4e2d, -2.2, 4.2, 0.2);
+            var puffGeo = new THREE.CircleGeometry(0.28, 14), puffs = [];
+            for (var pi = 0; pi < 10; pi++) {
+              var pf = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
+              pf.userData = { age: Math.random() * 3, life: 3, dx: 0 };
+              store.add(pf);
+              puffs.push(pf);
+            }
+            function updatePuffs(dt) {
+              for (var k = 0; k < puffs.length; k++) {
+                var pf = puffs[k], d = pf.userData;
+                d.age += dt;
+                if (d.age > d.life) { d.age = 0; d.dx = (Math.random() - 0.5) * 0.3; }
+                var t = d.age / d.life;
+                pf.position.set(-2.2 + d.dx + t * 0.5, 4.55 + t * 0.9, 0.2);
+                pf.scale.setScalar(0.45 + t * 1.0);
+                pf.material.opacity = 0.55 * Math.sin(Math.PI * t);
+                pf.quaternion.copy(camera.quaternion);
+              }
+            }
 
             /* 行人 */
             var tops = [0xe8702a, 0xf4a261, 0xc9a27a, 0x8d5a34, 0x4f7a6a, 0x3f5d8a, 0xb5483a, 0xd9b38c, 0x6b4a8a];
@@ -503,7 +525,7 @@
             var people = [], count = window.innerWidth < 640 ? 7 : 12;
             for (var n = 0; n < count; n++) { var p = makePerson(); spawn(p, true); people.push(p); }
 
-            function tick(dt) { for (var q = 0; q < people.length; q++) step(people[q], dt); }
+            function tick(dt) { for (var q = 0; q < people.length; q++) step(people[q], dt); updatePuffs(dt); }
 
             var running = false, last = 0;
             function frame(now) {
