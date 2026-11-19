@@ -5,10 +5,10 @@
  *  - 跨網域（例如 Supabase）：不攔截，一律走網路
  * 更新程式後，把 VERSION 改一個新值，舊快取會在啟用時清掉。
  */
-var VERSION = "meihua-v3";
+var VERSION = "meihua-v5";
 var ASSETS = [
   "./", "index.html", "manifest.webmanifest", "css/style.css",
-  "js/config.js", "js/data-zhouyi.js", "js/data-meihua.js", "js/core.js", "js/app.js",
+  "js/config.js", "js/data-zhouyi.js", "js/data-meihua.js", "js/data-guaying.js", "js/data-zi.js", "js/core.js", "js/app.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png", "icons/favicon.svg"
 ];
 

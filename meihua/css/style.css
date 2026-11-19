@@ -98,3 +98,14 @@ summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
   summary { padding: 8px 0; }
 }
 @media (display-mode: standalone) { body { overscroll-behavior-y: none; } }
+
+textarea { font: inherit; color: var(--ink); background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; resize: vertical; }
+.tone-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.tone-char { font-size: 1.4rem; font-weight: 700; min-width: 2rem; }
+label.tone { color: var(--ink); }
+
+.xdl { margin: 6px 0 12px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: .92rem; }
+.xdl dt { color: var(--muted); font-weight: 600; }
+.xdl dd { margin: 0; }
+mark { background: color-mix(in srgb, var(--accent) 25%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+input[type=search] { font: inherit; color: var(--ink); background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }

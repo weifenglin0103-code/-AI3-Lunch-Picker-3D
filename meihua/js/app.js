@@ -50,7 +50,7 @@
 
   // ---------- 起卦方式 ----------
   var METHODS = [
-    ["number", "數字起卦"], ["time", "時間起卦"], ["object", "物數／聲音"], ["random", "隨機起卦"], ["manual", "手動指定"]
+    ["number", "數字起卦"], ["time", "時間起卦"], ["char", "字占"], ["object", "物數／聲音"], ["random", "隨機起卦"], ["manual", "手動指定"]
   ];
   var METHOD_LABEL = {}; METHODS.forEach(function (m) { METHOD_LABEL[m[0]] = m[1]; });
   var method = "number";
@@ -89,6 +89,12 @@
       h = '<div class="row"><label class="grow">物數或聲數（例如看到的花瓣數、聽到的敲擊聲數）' +
         '<input id="obj-n" type="number" min="1" step="1" inputmode="numeric" placeholder="如 5"></label></div>' +
         '<p class="muted">所得數字為上卦，起卦當下的時辰數為下卦，兩數相加÷6 取動爻。（p.15）時間以現在的臺北時間為準。</p>';
+    } else if (method === "char") {
+      h = '<label>起卦用字（例如來問的人寫下的字、名字、或一句話；只取漢字）' +
+        '<textarea id="zi-text" rows="2" maxlength="600" placeholder="例如：求職順利"></textarea></label>' +
+        '<div class="row"><button type="button" id="zi-from-question">用「占問事由」</button><span class="muted" id="zi-count"></span></div>' +
+        '<div id="zi-detail"></div>' +
+        '<p class="muted">依《梅花易數》字占（p.15-22）：1 字拆左右畫；2–3 字數筆畫（康熙字典）；4–10 字改用古四聲（平上去入＝1–4）；11 字以上只數字數。</p>';
     } else if (method === "random") {
       h = '<p class="muted">由瀏覽器產生三個 1–999 的隨機數，再依「數字起卦（三數總和）」排盤。</p>';
     } else {
@@ -99,6 +105,7 @@
         '<p class="muted">用來重排已知的卦，或練習驗證。月令以現在時間計。</p>';
     }
     f.innerHTML = h;
+    if (method === "char") bindCharForm();
     if (method === "time") bindTimeForm();
     if (method === "number") {
       $("#fill-random").addEventListener("click", function () {
@@ -149,6 +156,89 @@
     return o;
   }
 
+  // ---------- 字占 ----------
+  var ziState = { loaded: false, loading: false, failed: false };
+  function ensureZi(cb) {
+    if (window.ZiData) { ziState.loaded = true; cb(); return; }
+    if (ziState.failed) { cb(); return; }
+    if (ziState.loading) return;
+    ziState.loading = true;
+    var sc = document.createElement("script");
+    sc.src = "js/data-zi.js";
+    sc.onload = function () { ziState.loaded = true; ziState.loading = false; cb(); };
+    sc.onerror = function () { ziState.failed = true; ziState.loading = false; cb(); };
+    document.head.appendChild(sc);
+  }
+  var TONES = [[1, "平"], [2, "上"], [3, "去"], [4, "入"]];
+
+  function renderCharDetail() {
+    var chars = C.hanChars($("#zi-text").value), n = chars.length, kind = C.charMethodFor(n), box = $("#zi-detail");
+    $("#zi-count").textContent = n ? "共 " + n + " 個漢字" : "";
+    if (kind === "none") { box.innerHTML = '<p class="muted">請輸入至少一個漢字。</p>'; return; }
+    var ZD = window.ZiData, note = "";
+    if (kind === "count") {
+      var up = Math.floor(n / 2);
+      box.innerHTML = '<p>11 字以上不看筆畫與聲調，只數字數：上卦取前 <strong>' + up + "</strong> 字，下卦取後 <strong>" + (n - up) + "</strong> 字。</p>";
+      return;
+    }
+    if (!ZD && !ziState.failed) { box.innerHTML = '<p class="muted">載入字表中…</p>'; ensureZi(renderCharDetail); return; }
+    if (ziState.failed) note = '<p class="warn">字表載入失敗，請手動輸入。</p>';
+    var rows = "";
+    if (kind === "single") {
+      var ch = chars[0], tot = ZD && ZD.strokes[ch];
+      box.innerHTML = note + "<p>一字占：楷書把「" + esc(ch) + "」分成左右兩半，左半筆畫為陽畫取上卦，右半筆畫為陰畫取下卦。" +
+        (tot ? "（《康熙字典》全字 " + tot + " 畫，供拆分時核對。）" : "") + '</p><div class="grid2">' +
+        '<label>左半筆畫<input id="zi-left" type="number" min="1" step="1" inputmode="numeric"></label>' +
+        '<label>右半筆畫<input id="zi-right" type="number" min="1" step="1" inputmode="numeric"></label></div>';
+      return;
+    }
+    if (kind === "stroke") {
+      rows = chars.map(function (c) {
+        var v = ZD && ZD.strokes[c];
+        return '<label>' + esc(c) + (v ? "" : ' <span class="warn">（查無，請填）</span>') + '<input class="zi-stroke" type="number" min="1" step="1" inputmode="numeric" value="' + (v || "") + '"></label>';
+      }).join("");
+      box.innerHTML = note + '<p>各字筆畫（自動帶入《康熙字典》筆畫，可修改）：</p><div class="grid3">' + rows + '</div>' +
+        '<p class="muted">康熙筆畫把「氵」算 4 畫、「艹」算 6 畫、「忄」算 4 畫等。簡化字或異體字的資料可能與正體不同，請自行核對。</p>';
+      return;
+    }
+    rows = chars.map(function (c, i) {
+      var cand = (ZD && ZD.tones[c]) || "", first = cand ? +cand[0] : 1;
+      var btns = TONES.map(function (t) {
+        var mark = cand.indexOf(String(t[0])) >= 0 ? "★" : "";
+        return '<label class="inline tone"><input type="radio" name="zt' + i + '" value="' + t[0] + '"' + (t[0] === first ? " checked" : "") + "> " + t[1] + mark + "</label>";
+      }).join("");
+      return '<div class="tone-row"><span class="tone-char">' + esc(c) + "</span>" + btns + (cand ? "" : ' <span class="warn">（查無，請自選）</span>') + "</div>";
+    }).join("");
+    box.innerHTML = note + '<p>各字古四聲（平上去入＝1–4）。★ 表示《廣韻》有此讀音；多音字預設第一個，請依語意改選：</p>' + rows +
+      '<p class="muted">書中用的是古四聲，與現代普通話聲調不同（普通話沒有入聲）。</p>';
+  }
+
+  function bindCharForm() {
+    $("#zi-text").addEventListener("input", renderCharDetail);
+    $("#zi-from-question").addEventListener("click", function () { $("#zi-text").value = $("#question").value; renderCharDetail(); });
+    renderCharDetail();
+  }
+
+  function collectChar() {
+    var chars = C.hanChars($("#zi-text").value), n = chars.length, kind = C.charMethodFor(n);
+    if (kind === "none") { showError("請輸入至少一個漢字。"); return null; }
+    if (kind === "count") return C.fromCharCount(chars);
+    var num = function (el) { var v = (el.value || "").trim(); return /^\d+$/.test(v) && +v >= 1 ? +v : null; };
+    if (kind === "single") {
+      var l = num($("#zi-left")), r = num($("#zi-right"));
+      if (l === null || r === null) { showError("請填入左半與右半的筆畫（大於 0 的整數）。"); return null; }
+      return C.fromOneChar(chars[0], l, r);
+    }
+    if (kind === "stroke") {
+      var st = $$(".zi-stroke").map(num);
+      if (st.some(function (x) { return x === null; })) { showError("每個字都要有筆畫（大於 0 的整數）。"); return null; }
+      return C.fromCharStrokes(chars, st);
+    }
+    var tn = chars.map(function (_, i) { var el = $('input[name="zt' + i + '"]:checked'); return el ? +el.value : null; });
+    if (tn.some(function (x) { return x === null; })) { showError("每個字都要選一個聲調。"); return null; }
+    return C.fromCharTones(chars, tn);
+  }
+
   function showError(msg) {
     var e = $("#form-error"); e.textContent = msg || ""; e.hidden = !msg;
   }
@@ -172,6 +262,10 @@
       var d = currentWhen();
       if (!d || isNaN(d)) { showError("請輸入有效的日期時間。"); return null; }
       return { divination: C.fromDate(d), when: d };
+    }
+    if (method === "char") {
+      var cd = collectChar();
+      return cd ? { divination: cd, when: now } : null;
     }
     if (method === "object") {
       var n = readPosInt("obj-n");
@@ -212,6 +306,41 @@
     if (y) out += "<blockquote><small>動爻　" + esc(y.pos) + "</small>" + esc(y.text) + "<br>象曰：" + esc(y.xiang) +
       (y.note ? '<small class="suppl">校註：' + esc(y.note) + "</small>" : "") + "</blockquote>";
     return out;
+  }
+
+  // ---------- 詳細卦應類象 ----------
+  function guaYingBlock(id, role) {
+    var g = window.GuaYingData && window.GuaYingData[id];
+    if (!g) return "";
+    return "<h3>" + (role ? role + "：" : "") + g.name + "（" + T[id].nature + "·" + T[id].elem + "）</h3><p>" + esc(g.intro) + "</p><dl class=\"xdl\">" +
+      g.entries.map(function (e) { return "<dt>" + esc(e[0]) + "</dt><dd>" + esc(e[1]) + "</dd>"; }).join("") + "</dl>";
+  }
+
+  var xiangSel = 1;
+  function hl(text, q) {
+    var t = esc(text);
+    if (!q) return t;
+    var qe = esc(q);
+    return t.split(qe).join("<mark>" + qe + "</mark>");
+  }
+  function renderXiang() {
+    var G = window.GuaYingData, q = ($("#xiang-q").value || "").trim();
+    if (!G) { $("#xiang-body").textContent = "類象資料載入失敗。"; return; }
+    $("#xiang-tabs").innerHTML = Object.keys(G).map(function (id) {
+      return '<button type="button" data-x="' + id + '" aria-pressed="' + (!q && +id === xiangSel) + '">' + G[id].name + "</button>";
+    }).join("");
+    if (!q) { $("#xiang-body").innerHTML = guaYingBlock(xiangSel, ""); return; }
+    var hits = [];
+    Object.keys(G).forEach(function (id) {
+      var g = G[id];
+      if (g.intro.indexOf(q) >= 0) hits.push([g.name, "總說", g.intro, id]);
+      g.entries.forEach(function (e) { if (e[0].indexOf(q) >= 0 || e[1].indexOf(q) >= 0) hits.push([g.name, e[0], e[1], id]); });
+    });
+    $("#xiang-body").innerHTML = hits.length
+      ? "<p>「" + esc(q) + "」共 " + hits.length + " 處：</p><ul>" + hits.map(function (h) {
+          return "<li><strong>" + h[0] + "</strong>（" + T[h[3]].elem + "）・" + esc(h[1]) + "：" + hl(h[2], q) + "</li>";
+        }).join("") + "</ul>"
+      : '<p class="muted">查無「' + esc(q) + "」。可換同義詞（例如「魚」→「水族」），或清空搜尋直接看各卦全文。</p>";
   }
 
   function renderResult(res, opts) {
@@ -313,7 +442,9 @@
           "卦德：" + t.virtue + "　方位：" + t.dir + "<br>人：" + t.family + "<br>身：" + t.body + "　獸：" + t.animal + "<br>物：" + esc(t.items.join("、")) + "</div>";
       };
       out += sec("類象（八卦萬物屬類）", '<div class="xiang-grid">' + xi(h.tiId, "體") + xi(h.yongId, "用") + "</div>" +
-        '<p class="muted">節錄自《梅花易數》〈八卦萬物屬類〉（p.29-30），僅列常用項目。</p>');
+        '<p class="muted">節錄自《梅花易數》〈八卦萬物屬類〉（p.29-30），僅列常用項目。</p>' +
+        (window.GuaYingData ? "<details><summary>體卦、用卦的詳細類象（卦應，p.183-198）</summary>" +
+          guaYingBlock(h.tiId, "體") + guaYingBlock(h.yongId, "用") + "</details>" : ""));
     }
 
     if (show.sources) {
@@ -444,14 +575,29 @@
       b.innerHTML = "<p>已登入：<strong>" + esc(cloud.user.email) + '</strong>。歷史紀錄會存到雲端，只有你本人讀得到。</p><button type="button" id="btn-logout">登出</button>';
       $("#btn-logout").addEventListener("click", function () { cloud.client.auth.signOut(); });
     } else {
-      b.innerHTML = '<p class="muted">輸入 Email，我們會寄一封登入連結（不需密碼）。登入後歷史紀錄會同步到雲端。</p>' +
-        '<div class="row"><label class="grow">Email<input id="login-email" type="email" autocomplete="email"></label><button type="button" id="btn-login">寄送登入連結</button></div><p id="login-msg" class="muted"></p>';
+      b.innerHTML = '<p class="muted">輸入 Email，我們會寄一封信（不需密碼）。信裡有登入連結與驗證碼：電腦可點連結；手機 App 請輸入驗證碼。登入後歷史紀錄會同步到雲端。</p>' +
+        '<div class="row"><label class="grow">Email<input id="login-email" type="email" autocomplete="email"></label><button type="button" id="btn-login">寄送登入信</button></div>' +
+        '<div class="row" id="code-row" hidden><label class="grow">信中的驗證碼<input id="login-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="例如 123456"></label><button type="button" id="btn-verify">驗證並登入</button></div>' +
+        '<p id="login-msg" class="muted" role="status"></p>';
+      var sentTo = "";
       $("#btn-login").addEventListener("click", function () {
         var email = $("#login-email").value.trim();
         if (!/^\S+@\S+\.\S+$/.test(email)) { $("#login-msg").textContent = "請輸入有效的 Email。"; return; }
         $("#login-msg").textContent = "寄送中…";
         cloud.client.auth.signInWithOtp({ email: email, options: { emailRedirectTo: location.href.split("#")[0] } })
-          .then(function (r) { $("#login-msg").textContent = r.error ? "失敗：" + r.error.message : "已寄出，請到信箱點擊連結。"; });
+          .then(function (r) {
+            if (r.error) { $("#login-msg").textContent = "失敗：" + r.error.message; return; }
+            sentTo = email; $("#code-row").hidden = false;
+            $("#login-msg").textContent = "已寄出。請到信箱查看：點連結，或在上方輸入驗證碼。";
+          });
+      });
+      $("#btn-verify").addEventListener("click", function () {
+        var code = $("#login-code").value.replace(/\s/g, "");
+        if (!sentTo || !/^\d{6,10}$/.test(code)) { $("#login-msg").textContent = "請輸入信中的 6 至 10 位數驗證碼。"; return; }
+        $("#login-msg").textContent = "驗證中…";
+        cloud.client.auth.verifyOtp({ email: sentTo, token: code, type: "email" })
+          .then(function (r) { if (r.error) $("#login-msg").textContent = "驗證失敗：" + r.error.message; });
+        // 成功時由 onAuthStateChange 更新畫面
       });
     }
   }
@@ -486,6 +632,14 @@
       if (last) { last = C.cast(last.divination, last.when, prefs.monthMode, last.yingInputs); last.record_question = $("#question").value.trim(); renderResult(last, { noScroll: true }); }
     });
     $("#pref-autosave").addEventListener("change", function (e) { prefs.autosave = e.target.checked; savePrefs(); });
+
+    // 類象查詢
+    $("#btn-xiang").addEventListener("click", function () { if (togglePanel("#panel-xiang")) renderXiang(); });
+    $("#xiang-q").addEventListener("input", renderXiang);
+    $("#xiang-tabs").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-x]"); if (!b) return;
+      xiangSel = +b.getAttribute("data-x"); $("#xiang-q").value = ""; renderXiang();
+    });
 
     // 歷史
     $("#btn-history").addEventListener("click", function () { if (togglePanel("#panel-history")) renderHistory(); });

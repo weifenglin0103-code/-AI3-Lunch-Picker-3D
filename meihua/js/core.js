@@ -272,6 +272,74 @@
 
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
 
+
+  // ---------- 字占（p.15-22）----------
+  // 只取漢字（忽略標點、空白、數字、英文）
+  function hanChars(text) {
+    var out = [];
+    for (var ch of String(text || "")) {
+      var c = ch.codePointAt(0);
+      if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF) || (c >= 0xF900 && c <= 0xFAFF) || (c >= 0x20000 && c <= 0x2FFFF)) out.push(ch);
+    }
+    return out;
+  }
+  // 依字數決定算法：1 字拆左右畫；2、3 字數筆畫；4–10 字用古四聲；11 字以上只數字數
+  function charMethodFor(n) {
+    if (n <= 0) return "none";
+    if (n === 1) return "single";
+    if (n <= 3) return "stroke";
+    if (n <= 10) return "tone";
+    return "count";
+  }
+  var TONE_NAME = { 1: "平", 2: "上", 3: "去", 4: "入" };
+  function sum(a) { return a.reduce(function (x, y) { return x + y; }, 0); }
+
+  function charResult(kind, upper, lower, dong, input, steps) {
+    return { method: "char", upper: upper, lower: lower, dong: dong, input: Object.assign({ kind: kind }, input), steps: steps };
+  }
+
+  // 一字：左半筆畫為陽畫取上卦，右半為陰畫取下卦，全畫除六取動爻（p.17）
+  function fromOneChar(ch, left, right) {
+    var upper = mod8(left), lower = mod8(right), dong = mod6(left + right);
+    return charResult("single", upper, lower, dong, { chars: [ch], left: left, right: right }, [
+      "「" + ch + "」左半 " + left + " 畫 ÷ 8 餘 " + (left % 8) + " → 上卦 " + T[upper].name,
+      "右半 " + right + " 畫 ÷ 8 餘 " + (right % 8) + " → 下卦 " + T[lower].name,
+      "全畫 " + (left + right) + " ÷ 6 餘 " + ((left + right) % 6) + " → 動爻 第 " + dong + " 爻"]);
+  }
+
+  // 二字：前字畫為上卦，後字畫為下卦（p.17）；三字：前一字為上卦，後二字畫和為下卦（p.18）；總畫數除六取動爻
+  function fromCharStrokes(chars, strokes) {
+    var n = chars.length, up = strokes.slice(0, 1), lo = strokes.slice(1);
+    var u = sum(up), l = sum(lo), total = u + l;
+    var upper = mod8(u), lower = mod8(l), dong = mod6(total);
+    return charResult("stroke", upper, lower, dong, { chars: chars, strokes: strokes }, [
+      "上卦取「" + chars.slice(0, 1).join("") + "」" + up.join("+") + " ＝ " + u + " 畫 ÷ 8 餘 " + (u % 8) + " → " + T[upper].name,
+      "下卦取「" + chars.slice(1).join("") + "」" + lo.join("+") + " ＝ " + l + " 畫 ÷ 8 餘 " + (l % 8) + " → " + T[lower].name,
+      "總畫數 " + total + " ÷ 6 餘 " + (total % 6) + " → 動爻 第 " + dong + " 爻"]);
+  }
+
+  // 四字至十字：不數筆畫，改用平上去入（1-4）之數；前後分半（奇數字數則上卦少一字）（p.18-20）
+  function fromCharTones(chars, tones) {
+    var n = chars.length, upLen = Math.floor(n / 2);
+    var u = sum(tones.slice(0, upLen)), l = sum(tones.slice(upLen)), total = u + l;
+    var upper = mod8(u), lower = mod8(l), dong = mod6(total);
+    var show = function (a, b) { return chars.slice(a, b).map(function (c, i) { return c + TONE_NAME[tones[a + i]] + tones[a + i]; }).join(" "); };
+    return charResult("tone", upper, lower, dong, { chars: chars, tones: tones }, [
+      "上卦（前 " + upLen + " 字）：" + show(0, upLen) + " ＝ " + u + " ÷ 8 餘 " + (u % 8) + " → " + T[upper].name,
+      "下卦（後 " + (n - upLen) + " 字）：" + show(upLen, n) + " ＝ " + l + " ÷ 8 餘 " + (l % 8) + " → " + T[lower].name,
+      "聲調總數 " + total + " ÷ 6 餘 " + (total % 6) + " → 動爻 第 " + dong + " 爻"]);
+  }
+
+  // 十一字以上：只數字數；偶數對半，奇數則上卦少一字；字數除六取動爻（p.21，範例 77 字 → 坎上艮下、五爻動）
+  function fromCharCount(chars) {
+    var n = chars.length, upLen = Math.floor(n / 2), loLen = n - upLen;
+    var upper = mod8(upLen), lower = mod8(loLen), dong = mod6(n);
+    return charResult("count", upper, lower, dong, { chars: chars.slice(0, 200), count: n }, [
+      "共 " + n + " 字，上卦取 " + upLen + " 字、下卦取 " + loLen + " 字",
+      upLen + " ÷ 8 餘 " + (upLen % 8) + " → 上卦 " + T[upper].name + "；" + loLen + " ÷ 8 餘 " + (loLen % 8) + " → 下卦 " + T[lower].name,
+      "總字數 " + n + " ÷ 6 餘 " + (n % 6) + " → 動爻 第 " + dong + " 爻"]);
+  }
+
   // ---------- 十應（p.176-181、p.112）----------
   // 日干支：以臺北時間當日 00:00 換日；JDN + 49 對 60 取餘，0 = 甲子（2000-01-01 為戊午日）
   function dayGanzhi(date) {
@@ -355,6 +423,8 @@
     solarMonth: solarMonth, monthContext: monthContext, seasonOfBranchIdx: seasonOfBranchIdx, stateOf: stateOf,
     fromNumbers: fromNumbers, fromYMDH: fromYMDH, fromDate: fromDate, fromObject: fromObject, fromManual: fromManual,
     randomInt: randomInt, analyze: analyze, levelOf: levelOf, cast: cast, TZ: TZ,
-    dayGanzhi: dayGanzhi, analyzeYing: analyzeYing, combineInnerOuter: combineInnerOuter
+    dayGanzhi: dayGanzhi, analyzeYing: analyzeYing, combineInnerOuter: combineInnerOuter,
+    hanChars: hanChars, charMethodFor: charMethodFor, fromOneChar: fromOneChar, fromCharStrokes: fromCharStrokes,
+    fromCharTones: fromCharTones, fromCharCount: fromCharCount
   };
 });

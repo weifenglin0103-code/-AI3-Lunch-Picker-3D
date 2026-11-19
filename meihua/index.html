@@ -23,6 +23,7 @@
       <nav class="topnav">
         <button type="button" id="btn-prefs">顯示項目</button>
         <button type="button" id="btn-history">歷史紀錄</button>
+        <button type="button" id="btn-xiang">類象查詢</button>
         <button type="button" id="btn-account" hidden>帳號</button>
         <button type="button" id="btn-install" hidden>📲 安裝到手機</button>
       </nav>
@@ -75,6 +76,15 @@
     <!-- 結果 -->
     <div id="result" aria-live="polite"></div>
 
+    <!-- 類象查詢 -->
+    <section class="card" id="panel-xiang" hidden>
+      <h2>卦應類象查詢</h2>
+      <p class="muted">《梅花易數》卷三〈卦應〉（p.183-198）。起卦當下見到的事物，可以在這裡查它屬於哪一卦，用作「外應」。</p>
+      <label>搜尋（例如：魚、老人、酒、東北、紅）<input id="xiang-q" type="search" autocomplete="off" placeholder="輸入關鍵字，留空則看各卦全文"></label>
+      <div class="tabs" id="xiang-tabs" role="tablist"></div>
+      <div id="xiang-body"></div>
+    </section>
+
     <!-- 歷史 -->
     <section class="card" id="panel-history" hidden>
       <h2>歷史紀錄</h2>
@@ -108,6 +118,7 @@
   <script src="js/config.js"></script>
   <script src="js/data-zhouyi.js"></script>
   <script src="js/data-meihua.js"></script>
+  <script src="js/data-guaying.js"></script>
   <script src="js/core.js"></script>
   <script src="js/app.js"></script>
 </body>

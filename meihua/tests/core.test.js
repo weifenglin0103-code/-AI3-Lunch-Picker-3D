@@ -192,3 +192,57 @@ test("cast 帶出十應（無輸入時只有日應）", () => {
   assert.equal(c.ying.items.length, 1); assert.equal(c.ying.items[0].key, "day");
   assert.ok(c.ying.combined.text);
 });
+
+test("字占：十一字以上依字數（書中 77 字範例，p.21）", () => {
+  const r = C.fromCharCount(Array.from({ length: 77 }, (_, i) => "字"));
+  assert.equal(r.upper, 6);  // 38 ÷ 8 餘 6 → 坎
+  assert.equal(r.lower, 7);  // 39 ÷ 8 餘 7 → 艮
+  assert.equal(r.dong, 5);   // 77 ÷ 6 餘 5
+  assert.equal(C.buildHexagram(r.upper, r.lower, r.dong).name.ben, "水山蹇");
+  assert.equal(C.fromCharCount(Array(11).fill("字")).upper, 5); // 11 字：上 5、下 6
+});
+
+test("字占：一字、二字、三字（筆畫）與四至十字（聲調）", () => {
+  const one = C.fromOneChar("明", 4, 4); assert.equal(one.upper, 4); assert.equal(one.lower, 4); assert.equal(one.dong, 2);
+  const two = C.fromCharStrokes(["天", "地"], [4, 6]);     // 上 4 震、下 6 坎、總 10 → 4
+  assert.deepEqual([two.upper, two.lower, two.dong], [4, 6, 4]);
+  const three = C.fromCharStrokes(["a", "b", "c"], [3, 4, 5]); // 上 3、下 9→1、總 12→6
+  assert.deepEqual([three.upper, three.lower, three.dong], [3, 1, 6]);
+  const four = C.fromCharTones(["一", "二", "三", "四"], [1, 2, 3, 4]); // 前二和 3、後二和 7、總 10→4
+  assert.deepEqual([four.upper, four.lower, four.dong], [3, 7, 4]);
+  const five = C.fromCharTones(Array(5).fill("字"), [1, 1, 2, 2, 2]); // 前二 2、後三 6
+  assert.deepEqual([five.upper, five.lower, five.dong], [2, 6, 2]);
+  const ten = C.fromCharTones(Array(10).fill("字"), Array(10).fill(1)); // 5 + 5 → 都是 5；總 10→4
+  assert.deepEqual([ten.upper, ten.lower, ten.dong], [5, 5, 4]);
+});
+
+test("字占：取字與字數分流", () => {
+  assert.deepEqual(C.hanChars("你好，World 123！梅花。"), ["你", "好", "梅", "花"]);
+  assert.deepEqual([0, 1, 2, 3, 4, 10, 11, 50].map(C.charMethodFor), ["none", "single", "stroke", "stroke", "tone", "tone", "count", "count"]);
+});
+
+test("字占資料表：康熙筆畫與古四聲抽樣", () => {
+  const Zi = require("../js/data-zi.js");
+  const want = { 花: 10, 梅: 11, 湖: 13, 學: 16, 萬: 15, 凶: 4, 乾: 11, 坤: 8, 天: 4, 地: 6 };
+  Object.keys(want).forEach(c => assert.equal(Zi.strokes[c], want[c], c));
+  const tone = { 天: "1", 地: "3", 人: "1", 吉: "4", 一: "4", 二: "3", 五: "2", 九: "2", 十: "4", 梅: "1", 學: "4" };
+  Object.keys(tone).forEach(c => assert.equal(Zi.tones[c], tone[c], c));
+  assert.ok(Zi.tones["易"].includes("3") && Zi.tones["易"].includes("4")); // 多音字列出全部可能
+});
+
+test("卦應詳細類象：八卦齊全、結構完整、與簡表五行方位一致", () => {
+  const G = require("../js/data-guaying.js");
+  assert.deepEqual(Object.keys(G).map(Number).sort(), [1, 2, 3, 4, 5, 6, 7, 8]);
+  Object.keys(G).forEach(id => {
+    const g = G[id];
+    assert.equal(g.name, D.TRIGRAMS[id].name);
+    assert.ok(g.intro.length > 30, g.name);
+    assert.ok(g.entries.length >= 18, g.name + " 條目數 " + g.entries.length);
+    g.entries.forEach(e => assert.ok(e.length === 2 && e[0] && e[1], g.name + " " + e[0]));
+    assert.ok(!/[一-鿿]*[发动门]/.test(g.entries.map(e => e.join("")).join("")), g.name + " 含簡體字"); // 發動門
+  });
+  const find = (id, cat) => G[id].entries.find(e => e[0] === cat)[1];
+  assert.ok(find(1, "穀果").includes("龍眼"));
+  assert.ok(find(6, "禽獸").includes("豕"));
+  assert.ok(find(3, "方所") === "正南" && find(2, "方所") === "西方" && find(4, "方所") === "正東" && find(6, "方所").startsWith("正北"));
+});
