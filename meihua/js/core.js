@@ -272,12 +272,81 @@
 
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
 
-  // ---------- 一次完成：起卦結果 + 建卦 + 月令 + 分析 ----------
-  function cast(divination, whenDate, monthMode) {
+  // ---------- 十應（p.176-181、p.112）----------
+  // 日干支：以臺北時間當日 00:00 換日；JDN + 49 對 60 取餘，0 = 甲子（2000-01-01 為戊午日）
+  function dayGanzhi(date) {
+    var p = zonedParts(date);
+    var jdn = Math.floor(Date.UTC(p.year, p.month - 1, p.day) / 86400000) + 2440588;
+    var idx = (((jdn + 49) % 60) + 60) % 60;
+    var stem = D.STEMS[idx % 10], branch = D.BRANCHES[idx % 12];
+    return { idx: idx, stem: stem, branch: branch, ganzhi: stem + branch, elem: D.BRANCH_ELEM[branch] };
+  }
+
+  function pickOption(list, v) {
+    for (var i = 0; i < list.length; i++) if (list[i].v === v) return list[i];
+    return null;
+  }
+
+  // inputs: { dir, weather, place, people, object, omen }；都是選填（字串），omen 為 "good" / "bad" / ""
+  function analyzeYing(h, when, inputs) {
+    inputs = inputs || {};
+    var ti = T[h.tiId], yong = T[h.yongId], O = D.YING_OPTIONS;
+    var items = [];
+    function judge(rel) {
+      return rel.tone === "good" ? "吉" : (rel.tone === "bad" ? "凶" : "不吉（耗洩）");
+    }
+    function addByTrigram(key, title, opt) {
+      if (!opt) return;
+      var t = T[opt.id], rel = relation(ti.elem, t.elem);
+      items.push({ key: key, title: title, detail: opt.v + " → " + t.name + "（" + t.elem + "）", rel: rel, score: rel.score, verdict: judge(rel) });
+    }
+    addByTrigram("dir", "方應", pickOption(O.dir, inputs.dir));
+    addByTrigram("weather", "天時應", pickOption(O.weather, inputs.weather));
+    addByTrigram("place", "地理應", pickOption(O.place, inputs.place));
+    addByTrigram("people", "人事應", pickOption(O.people, inputs.people));
+    addByTrigram("object", "外應", pickOption(O.object, inputs.object));
+
+    // 日應：日辰（日支）五行與體卦；並看日辰對用卦的扶抑（p.179）
+    var dg = dayGanzhi(when);
+    var relDay = relation(ti.elem, dg.elem);
+    var dayNote = "";
+    var relDayYong = relation(yong.elem, dg.elem);
+    var yongBoosted = relDayYong.key === "bihe" || relDayYong.key === "yongSheng"; // 日辰比和或生助用卦
+    var yongRel = relation(ti.elem, yong.elem);
+    if (yongBoosted && yongRel.key === "yongKe") dayNote = "日辰扶助剋體之用卦，凶勢更重。";
+    else if (yongBoosted && (yongRel.key === "yongSheng" || yongRel.key === "bihe")) dayNote = "日辰扶助生體之用卦，吉勢更大。";
+    items.push({ key: "day", title: "日應", detail: dg.ganzhi + "日（日辰屬" + dg.elem + "）", rel: relDay, score: relDay.score, verdict: judge(relDay), note: dayNote });
+
+    // 刻應（三要）：起卦當下所見所聞之吉凶徵兆
+    if (inputs.omen === "good") items.push({ key: "omen", title: "刻應", detail: "當下見聞為吉兆", rel: D.RELATIONS.bihe, score: 1, verdict: "吉" });
+    if (inputs.omen === "bad") items.push({ key: "omen", title: "刻應", detail: "當下見聞為凶兆", rel: D.RELATIONS.yongKe, score: -1, verdict: "凶" });
+
+    var outer = items.reduce(function (a, it) { return a + it.score; }, 0);
+    var outerLevel = outer >= 1 ? "吉" : (outer <= -1 ? "凶" : "平");
+    return { items: items, dayGanzhi: dg, outerScore: outer, outerLevel: outerLevel, answered: items.filter(function (i) { return i.key !== "day"; }).length };
+  }
+
+  // 內外合斷（p.112〈十應目論〉）：內卦 = 體用互變；外卦 = 十應
+  function combineInnerOuter(inner, outer) {
+    var iG = inner.total >= 0.5, iB = inner.total <= -0.5;
+    var oG = outer.outerLevel === "吉", oB = outer.outerLevel === "凶";
+    var text, tone;
+    if (iG && oG) { text = "內外皆吉，斷然吉。"; tone = "good"; }
+    else if (iB && oB) { text = "內外皆凶，斷然凶。"; tone = "bad"; }
+    else if (iG && oB) { text = "內卦吉而外應凶：吉事反被破壞，進行中須防阻礙。"; tone = "warn"; }
+    else if (iB && oG) { text = "內卦凶而外應吉：凶中有解，尚有轉機。"; tone = "warn"; }
+    else { text = "內外吉凶不明確，須詳察事理，不可膠柱鼓瑟。"; tone = "warn"; }
+    return { text: text, tone: tone };
+  }
+
+  // ---------- 一次完成：起卦結果 + 建卦 + 月令 + 分析 + 十應 ----------
+  function cast(divination, whenDate, monthMode, yingInputs) {
     var h = buildHexagram(divination.upper, divination.lower, divination.dong);
     var month = monthContext(whenDate, monthMode || "solar");
     var a = analyze(h, month);
-    return { divination: divination, hexagram: h, month: month, analysis: a, when: whenDate };
+    var ying = analyzeYing(h, whenDate, yingInputs);
+    ying.combined = combineInnerOuter(a, ying);
+    return { divination: divination, hexagram: h, month: month, analysis: a, ying: ying, when: whenDate, yingInputs: yingInputs || {} };
   }
 
   return {
@@ -285,6 +354,7 @@
     branchOfHour: branchOfHour, zonedParts: zonedParts, lunarInfo: lunarInfo, sunLongitude: sunLongitude,
     solarMonth: solarMonth, monthContext: monthContext, seasonOfBranchIdx: seasonOfBranchIdx, stateOf: stateOf,
     fromNumbers: fromNumbers, fromYMDH: fromYMDH, fromDate: fromDate, fromObject: fromObject, fromManual: fromManual,
-    randomInt: randomInt, analyze: analyze, levelOf: levelOf, cast: cast, TZ: TZ
+    randomInt: randomInt, analyze: analyze, levelOf: levelOf, cast: cast, TZ: TZ,
+    dayGanzhi: dayGanzhi, analyzeYing: analyzeYing, combineInnerOuter: combineInnerOuter
   };
 });

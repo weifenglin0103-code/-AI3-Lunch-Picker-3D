@@ -133,3 +133,62 @@ test("fromDate 與 cast 端到端", () => {
   const c = C.cast(r, when, "solar");
   assert.ok(c.analysis.level); assert.equal(c.month.branch, "亥");
 });
+
+test("彖傳：64 卦皆有，且校訂已生效（依《周易正義》核對）", () => {
+  assert.ok(Z.HEXAGRAMS.every(h => h.tuan && h.tuan.length > 10));
+  const byName = n => Z.HEXAGRAMS.find(h => h.name === n);
+  assert.ok(byName("離").daxiang.includes("照于四方"));
+  assert.ok(!byName("離").daxiang.includes("照四於方"));
+  assert.equal(byName("咸").yao[4].xiang, "咸其脢，志末也。");
+  assert.ok(byName("小畜").yao[5].text.includes("月幾望") && byName("小畜").yao[5].note);
+  assert.ok(byName("中孚").yao[3].text.includes("月幾望"));
+  // 與《周易正義》掃描逐字核對過的三則彖傳（離 p.158、咸 p.163-164、小畜 p.69）
+  const np = t => t.replace(/[。，、；：？！「」\s]/g, ""); // 標點依維基文庫，故只比對文字
+  assert.equal(np(byName("離").tuan), np("離，麗也。日月麗乎天，百穀草木麗乎土。重明以麗乎正，乃化成天下。柔麗乎中正，故亨，是以畜牝牛，吉也。"));
+  assert.equal(np(byName("小畜").tuan), np("小畜，柔得位而上下應之，曰小畜。健而巽，剛中而志行，乃亨。密雲不雨，尚往也；自我西郊，施未行也。"));
+  assert.ok(np(byName("咸").tuan).startsWith(np("咸，感也。柔上而剛下，二氣感應以相與。止而說，男下女，是以亨利貞取女吉也。")));
+});
+
+test("日干支：2000-01-01 戊午、2024-02-10（春節）甲辰", () => {
+  assert.equal(C.dayGanzhi(new Date("2000-01-01T12:00:00+08:00")).ganzhi, "戊午");
+  assert.equal(C.dayGanzhi(new Date("2024-02-10T12:00:00+08:00")).ganzhi, "甲辰");
+  assert.equal(C.dayGanzhi(new Date("2024-02-10T00:30:00+08:00")).ganzhi, "甲辰"); // 臺北 00:00 換日
+  assert.equal(C.dayGanzhi(new Date("2024-02-09T23:30:00+08:00")).ganzhi, "癸卯");
+});
+
+test("十應：天時應與書中〈復明天時之應〉（p.113）一致 —— 天朗無雲（乾）時", () => {
+  // 書：乾、兌為體則比和而吉；坎為體則逢生而大吉；坤、艮為體則洩氣；震、巽為體則見克而不吉
+  const when = new Date("2026-11-19T10:00:00+08:00");
+  const want = { 1: "bihe", 2: "bihe", 6: "yongSheng", 8: "tiSheng", 7: "tiSheng", 4: "yongKe", 5: "yongKe" };
+  Object.keys(want).forEach(tiId => {
+    // 造一個體卦為 tiId 的卦：動爻在下卦(1爻)，上卦即為體
+    const h = C.buildHexagram(+tiId, 3, 1);
+    const y = C.analyzeYing(h, when, { weather: "天朗無雲（乾）" });
+    const it = y.items.find(i => i.key === "weather");
+    assert.equal(it.rel.key, want[tiId], "體=" + D.TRIGRAMS[tiId].name);
+  });
+});
+
+test("十應：方應、地理、人事、外應與刻應；內外合斷", () => {
+  const when = new Date("2026-11-19T10:00:00+08:00");
+  const h = C.buildHexagram(2, 3, 1);                       // 兌上離下，動初爻 → 體兌金、用離火
+  const y = C.analyzeYing(h, when, { dir: "南", people: "老人、父、尊長（乾）", object: "坎：水、雨雪、魚鹽酒、黑色之物", omen: "bad" });
+  const get = k => y.items.find(i => i.key === k);
+  assert.equal(get("dir").rel.key, "yongKe");               // 南=離火 剋 兌金
+  assert.equal(get("people").rel.key, "bihe");              // 乾金 比和
+  assert.equal(get("object").rel.key, "tiSheng");           // 兌金生坎水 → 洩
+  assert.equal(get("omen").score, -1);
+  assert.ok(y.items.find(i => i.key === "day"));            // 日應永遠有
+  const c = C.combineInnerOuter({ total: -3 }, { outerLevel: "吉" });
+  assert.ok(c.text.includes("凶中有解"));
+  assert.ok(C.combineInnerOuter({ total: 3 }, { outerLevel: "吉" }).text.includes("斷然吉"));
+  assert.ok(C.combineInnerOuter({ total: 3 }, { outerLevel: "凶" }).text.includes("吉事反被破壞"));
+  assert.ok(C.combineInnerOuter({ total: -3 }, { outerLevel: "凶" }).text.includes("斷然凶"));
+});
+
+test("cast 帶出十應（無輸入時只有日應）", () => {
+  const when = new Date("2026-11-19T10:00:00+08:00");
+  const c = C.cast(C.fromManual(2, 3, 1), when, "solar");
+  assert.equal(c.ying.items.length, 1); assert.equal(c.ying.items[0].key, "day");
+  assert.ok(c.ying.combined.text);
+});

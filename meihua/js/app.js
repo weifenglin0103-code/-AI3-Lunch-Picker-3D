@@ -16,13 +16,13 @@
   // ---------- 設定（localStorage，可能被瀏覽器禁用，全部 try/catch）----------
   var PREFS_KEY = "meihua.prefs.v1", HIST_KEY = "meihua.history.v1";
   var SHOW_ITEMS = [
-    ["steps", "起卦計算過程"], ["text", "本卦卦辭、大象、動爻爻辭與小象"], ["extra", "互卦、變卦的卦辭"],
-    ["tiyong", "體用生剋表"], ["month", "月令旺衰（旺相休囚死）"], ["verdict", "綜合斷語與評分明細"],
+    ["steps", "起卦計算過程"], ["text", "本卦卦辭、大象、動爻爻辭與小象"], ["tuan", "彖傳（解釋卦辭）"], ["extra", "互卦、變卦的卦辭"],
+    ["tiyong", "體用生剋表"], ["month", "月令旺衰（旺相休囚死）"], ["verdict", "綜合斷語與評分明細"], ["ying", "十應（外應）與內外合斷"],
     ["xiang", "體卦、用卦的類象"], ["sources", "原書依據頁碼"]
   ];
   var DEFAULT_PREFS = {
     monthMode: "solar", dongMode: "sum", autosave: true,
-    show: { steps: true, text: true, extra: false, tiyong: true, month: true, verdict: true, xiang: false, sources: false }
+    show: { steps: true, text: true, tuan: true, extra: false, tiyong: true, month: true, verdict: true, ying: true, xiang: false, sources: false }
   };
   function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; } }
@@ -129,6 +129,26 @@
     refresh();
   }
 
+  // ---------- 十應欄位 ----------
+  var YING_FIELDS = [
+    ["dir", "所在方位（方應）", "dir"], ["weather", "天氣（天時應）", "weather"], ["place", "所處地點（地理應）", "place"],
+    ["people", "偶遇之人（人事應）", "people"], ["object", "偶見外物（外應）", "object"]
+  ];
+  function renderYingFields() {
+    var h = YING_FIELDS.map(function (f) {
+      var opts = ['<option value="">（不填）</option>'].concat(D.YING_OPTIONS[f[2]].map(function (o) { return '<option value="' + esc(o.v) + '">' + esc(o.v) + "</option>"; }));
+      return '<label>' + f[1] + '<select id="y-' + f[0] + '">' + opts.join("") + "</select></label>";
+    }).join("");
+    h += '<label>當下見聞的徵兆（刻應）<select id="y-omen"><option value="">（不填）</option><option value="good">吉兆（笑語、喜事、好消息）</option><option value="bad">凶兆（哭泣、爭吵、不祥）</option></select></label>';
+    $("#ying-fields").innerHTML = h;
+  }
+  function readYing() {
+    var o = {};
+    YING_FIELDS.forEach(function (f) { o[f[0]] = $("#y-" + f[0]).value; });
+    o.omen = $("#y-omen").value;
+    return o;
+  }
+
   function showError(msg) {
     var e = $("#form-error"); e.textContent = msg || ""; e.hidden = !msg;
   }
@@ -186,9 +206,11 @@
 
   function textBlock(info, dong) {
     var y = info.yao[dong - 1];
-    var out = "<blockquote><small>卦辭</small>" + esc(info.title) + "：" + esc(info.guaci) + "</blockquote>" +
-      "<blockquote><small>大象</small>" + esc(info.daxiang) + "</blockquote>";
-    if (y) out += "<blockquote><small>動爻　" + esc(y.pos) + "</small>" + esc(y.text) + "<br>象曰：" + esc(y.xiang) + "</blockquote>";
+    var out = "<blockquote><small>卦辭</small>" + esc(info.title) + "：" + esc(info.guaci) + "</blockquote>";
+    if (prefs.show.tuan) out += "<blockquote><small>彖傳</small>" + esc(info.tuan) + "</blockquote>";
+    out += "<blockquote><small>大象</small>" + esc(info.daxiang) + "</blockquote>";
+    if (y) out += "<blockquote><small>動爻　" + esc(y.pos) + "</small>" + esc(y.text) + "<br>象曰：" + esc(y.xiang) +
+      (y.note ? '<small class="suppl">校註：' + esc(y.note) + "</small>" : "") + "</blockquote>";
     return out;
   }
 
@@ -218,7 +240,9 @@
     if (show.extra) {
       out += sec("互卦與變卦的卦辭",
         "<h3>互卦：" + esc(h.name.hu) + "（事之中間）</h3><blockquote>" + esc(huInfo.title) + "：" + esc(huInfo.guaci) + "</blockquote>" +
+        (show.tuan ? "<blockquote><small>彖傳</small>" + esc(huInfo.tuan) + "</blockquote>" : "") +
         "<h3>變卦：" + esc(h.name.bian) + "（事之終結）</h3><blockquote>" + esc(bianInfo.title) + "：" + esc(bianInfo.guaci) + "</blockquote>" +
+        (show.tuan ? "<blockquote><small>彖傳</small>" + esc(bianInfo.tuan) + "</blockquote>" : "") +
         "<blockquote><small>變卦大象</small>" + esc(bianInfo.daxiang) + "</blockquote>");
     }
 
@@ -267,6 +291,21 @@
         "分級：≥4 大吉、≥2 吉、≥0.5 小吉、≥－0.5 平、≥－2 小凶、≥－4 凶、其餘大凶。</p></details>");
     }
 
+    if (show.ying) {
+      var yg = res.ying;
+      var yrows = yg.items.map(function (it) {
+        return "<tr><td>" + it.title + "</td><td>" + esc(it.detail) + '</td><td><span class="' + it.rel.tone + '">' + it.rel.label + '</span></td><td class="' + it.rel.tone + '">' + it.verdict + "</td></tr>" +
+          (it.note ? '<tr><td></td><td colspan="3" class="muted">' + esc(it.note) + "</td></tr>" : "");
+      }).join("");
+      out += sec("十應與內外合斷",
+        '<p class="muted">正應、互應、變應即上方「體用生剋表」（內卦）；以下為方、日、刻、外、天時、地理、人事等外應（p.176-181）。</p>' +
+        '<table><thead><tr><th>應</th><th>所見／所值</th><th>與體關係</th><th>判斷</th></tr></thead><tbody>' + yrows + "</tbody></table>" +
+        (yg.answered === 0 ? '<p class="muted">目前只有「日應」。在起卦區展開「十應」填寫起卦當下的方位、天氣、地點等，可得到更完整的外應。</p>' : "") +
+        "<p>外應分數 " + yg.outerScore + "（" + yg.outerLevel + "）；內卦（體用互變）" + a.level + "。</p>" +
+        '<p><strong class="' + yg.combined.tone + '">' + esc(yg.combined.text) + '</strong></p>' +
+        '<p class="muted">依〈十應目論〉（p.112）：內外皆吉斷吉，皆凶斷凶；內吉外凶，吉被破；內凶外吉，凶可解。須詳理，不可膠柱鼓瑟。</p>');
+    }
+
     if (show.xiang) {
       var xi = function (id, role) {
         var t = T[id];
@@ -301,7 +340,7 @@
       ts: new Date().toISOString(), whenISO: res.when.toISOString(),
       question: question, category: category, method: res.divination.method,
       divination: { method: res.divination.method, upper: res.divination.upper, lower: res.divination.lower, dong: res.divination.dong, input: res.divination.input, steps: res.divination.steps },
-      monthMode: prefs.monthMode,
+      monthMode: prefs.monthMode, ying: res.yingInputs || {},
       summary: { ben: h.name.ben, hu: h.name.hu, bian: h.name.bian, level: res.analysis.level, total: res.analysis.total }
     };
   }
@@ -358,7 +397,7 @@
 
   function openRecord(rec) {
     var d = rec.divination, when = new Date(rec.whenISO || rec.ts);
-    var res = C.cast(d, when, rec.monthMode || prefs.monthMode);
+    var res = C.cast(d, when, rec.monthMode || prefs.monthMode, rec.ying || {});
     res.record_question = rec.question;
     renderResult(res);
   }
@@ -369,7 +408,7 @@
     var got = collect();
     if (!got) return;
     var question = $("#question").value.trim(), category = $("#category").value;
-    var res = C.cast(got.divination, got.when, prefs.monthMode);
+    var res = C.cast(got.divination, got.when, prefs.monthMode, readYing());
     res.record_question = question;
     last = res;
     renderResult(res);
@@ -421,7 +460,7 @@
   function togglePanel(id) { var p = $(id); p.hidden = !p.hidden; return !p.hidden; }
 
   function init() {
-    renderTabs(); renderForm();
+    renderTabs(); renderForm(); renderYingFields();
 
     $("#method-tabs").addEventListener("click", function (e) {
       var b = e.target.closest("button[data-m]"); if (!b) return;
@@ -444,7 +483,7 @@
     $("#pref-monthMode").addEventListener("change", function (e) {
       prefs.monthMode = e.target.value; savePrefs();
       if (method === "time") bindTimeForm();
-      if (last) { last = C.cast(last.divination, last.when, prefs.monthMode); last.record_question = $("#question").value.trim(); renderResult(last, { noScroll: true }); }
+      if (last) { last = C.cast(last.divination, last.when, prefs.monthMode, last.yingInputs); last.record_question = $("#question").value.trim(); renderResult(last, { noScroll: true }); }
     });
     $("#pref-autosave").addEventListener("change", function (e) { prefs.autosave = e.target.checked; savePrefs(); });
 
