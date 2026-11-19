@@ -2,7 +2,16 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#8a3b2e">
+  <meta name="description" content="梅花易數線上排盤：數字、時間、物數起卦，體用生剋、月令旺衰、十應，配《周易》卦辭爻辭與彖象。">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="梅花易數">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>梅花易數排盤</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -15,6 +24,7 @@
         <button type="button" id="btn-prefs">顯示項目</button>
         <button type="button" id="btn-history">歷史紀錄</button>
         <button type="button" id="btn-account" hidden>帳號</button>
+        <button type="button" id="btn-install" hidden>📲 安裝到手機</button>
       </nav>
     </div>
   </header>
@@ -85,6 +95,12 @@
   </main>
 
   <footer class="wrap muted foot">
+    <details>
+      <summary>如何安裝成手機 App</summary>
+      <p><strong>iPhone（Safari）</strong>：點下方「分享」按鈕 → 「加入主畫面」。<br>
+         <strong>Android（Chrome）</strong>：點右上角選單 → 「安裝應用程式」或「加到主畫面」，或直接按上方「安裝到手機」。<br>
+         安裝後會全螢幕開啟，沒有網路也能排盤；歷史紀錄存在手機本機（登入雲端則可同步）。</p>
+    </details>
     <p>斷語為依原書體用、旺衰規則所做的簡化推算，僅供娛樂與自我反思，不構成任何決策建議。</p>
     <p>經文：傅佩榮《傅佩榮易經課》解卦手冊中的《周易》原文；規則：邵雍《梅花易數》（陳明點校）。</p>
   </footer>

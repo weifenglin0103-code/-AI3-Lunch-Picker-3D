@@ -517,5 +517,25 @@
     loadSupabase();
   }
 
+  // ---------- PWA：離線快取與安裝 ----------
+  function initPwa() {
+    if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function (e) { console.warn("Service Worker 註冊失敗", e); });
+      });
+    }
+    var deferred = null;
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault(); deferred = e; $("#btn-install").hidden = false;
+    });
+    $("#btn-install").addEventListener("click", function () {
+      if (!deferred) return;
+      deferred.prompt();
+      deferred.userChoice.then(function () { deferred = null; $("#btn-install").hidden = true; });
+    });
+    window.addEventListener("appinstalled", function () { $("#btn-install").hidden = true; });
+  }
+
   init();
+  initPwa();
 })();
